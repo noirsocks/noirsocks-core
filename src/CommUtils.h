@@ -88,7 +88,8 @@ std::vector<std::string> SplitString(const std::string& str, const std::string& 
 
 inline uint64_t GetProcessId()
 {
-    return GET_PID_FUNC();
+    static uint64_t pid = GET_PID_FUNC();
+    return pid;
 }
 
 #ifdef _WIN32

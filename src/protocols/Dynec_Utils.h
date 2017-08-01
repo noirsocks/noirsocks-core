@@ -77,15 +77,16 @@ public:
 
     uint64_t GetUUID(const std::string& local_host)
     {
-        static uint32_t low_bits = 0;
+        static uint64_t low_bits = 0;
         ++low_bits;
         uint64_t high_bits = 0;
         for (const char& ch : local_host)
         {
-            high_bits = high_bits * 131;
-            high_bits += (*(const unsigned char*)(&ch)) * 131;
+            high_bits *= 131;
+            high_bits += (uint64_t)((*(const unsigned char*)(&ch))) * 131;
         }
-        return (high_bits << 32) | ((uint64_t)low_bits);
+        uint64_t pid_part = CommUtils::GetProcessId() & 0xFFFF;
+        return (high_bits << 32) | (pid_part << 16) | (low_bits & 0xFFFF);
     }
 
     bool CheckUUIDRepeat(uint64_t uuid, uint64_t expire_ts)

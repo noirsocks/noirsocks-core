@@ -23,6 +23,7 @@
 #include "CommUtils.h"
 #include "DynecTunnelClient.h"
 #include "Dynec_Utils.h"
+#include "ServerBase.h"
 
 namespace NoirSocks
 {
@@ -177,7 +178,7 @@ void DynecTunnelClient::FeedConnReq(const std::string& host, uint16_t port, int 
     }
 
     //计算uuid
-    uint64_t uuid = Dynec_Utils::GetInstance().GetUUID(m_LocalHost);
+    uint64_t uuid = Dynec_Utils::GetInstance().GetUUID(GetServerInstance()->GetConf().id);
     DEBUG_LOG("Socket %llu uuid=%llX", m_ID, uuid);
 
     //分配临时内存
