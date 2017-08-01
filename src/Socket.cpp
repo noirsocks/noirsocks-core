@@ -40,6 +40,7 @@ void Socket::Stop()
 {
     INFO_LOG("Socket %llu stop...", m_ID);
     auto self(shared_from_this());
+    OnCancelTimer();
     try
     {
         m_Socket.shutdown(boost::asio::ip::tcp::socket::shutdown_both);
@@ -133,6 +134,8 @@ void Socket::BindProtocolCallbacks()
     m_Protocol->SetCreateUdpCallback(std::bind(&Socket::OnCreateUdp, this, _1, _2, _3));
     m_Protocol->SetConnReqCallback(std::bind(&Socket::OnConnReqGot, this, _1, _2, _3));
     m_Protocol->SetConnRspCallback(std::bind(&Socket::OnConnRspGot, this, _1, _2, _3));
+    m_Protocol->SetTimerCallback(std::bind(&Socket::OnSetTimer, this, _1, _2));
+    m_Protocol->SetTimerCancleCallback(std::bind(&Socket::OnCancelTimer, this));
     m_Protocol->SetID(m_ID);
 }
 
@@ -327,6 +330,47 @@ uint16_t Socket::OnCreateUdp(const std::string& host, uint16_t base_port, Protoc
     m_SubUdpSocket->Run();
 
     return base_port;
+}
+
+void Socket::OnSetTimer(uint64_t milli_secs, std::string&& msg)
+{
+    if (m_Timer) OnCancelTimer();
+    if (milli_secs == 0) return;
+
+    auto self(shared_from_this());
+    std::shared_ptr<std::string> ptr_msg = std::make_shared<std::string>(std::move(msg));
+    m_Timer = std::make_shared<boost::asio::deadline_timer>(m_IoService);
+    m_Timer->expires_from_now(boost::posix_time::millisec(milli_secs));
+    m_Timer->async_wait([self, ptr_msg](const boost::system::error_code& ec)
+        {
+            if (!ec)
+            {
+                try
+                {
+                    self->m_Protocol->OnTimer(std::move(*ptr_msg));
+                }
+                catch (ProtocolError& err)
+                {
+                    ERROR_LOG("Socket %llu Protocol error : error_code=%d err_msg=%s", self->m_ID, err.error_code, err.error_msg.c_str());
+                    if (err.error_code > 0) self->EndSession();
+                    else self->OnFatalError(err);
+                }
+            }
+        });
+}
+
+void Socket::OnCancelTimer()
+{
+    if (m_Timer)
+    {
+        boost::system::error_code ec;
+        m_Timer->cancel(ec);
+        if (ec)
+        {
+            ERROR_LOG("Socket %llu cancel timer failed. ec=%d msg=%s", m_ID, ec.value(), ec.message().c_str());
+        }
+        m_Timer = nullptr;
+    }
 }
 
 void Socket::DoAsyncRead()

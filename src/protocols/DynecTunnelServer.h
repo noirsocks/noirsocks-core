@@ -18,6 +18,8 @@
 
 #pragma once
 
+#include <chrono>
+
 #include <openssl/aes.h>
 
 #include "Config.h"
@@ -32,9 +34,14 @@ namespace Protocol
 class DynecTunnelServer : public ProtocolBase
 {
 public:
-    explicit DynecTunnelServer(const LocalService& svc) : m_Conf(svc), m_ReadN(0), m_WriteN(0), m_Stage(1), m_ReqHeadLen(0), m_UUID_Ts(0) {}
+    explicit DynecTunnelServer(const LocalService& svc)
+        : m_Conf(svc), m_ReadN(0), m_WriteN(0)
+        , m_Stage(1), m_ReqHeadLen(0), m_UUID_Ts(0), m_GotBadRequest(false)
+    {}
     static bool CheckProtocolConf(const LocalService& svc, std::string& err_msg);
     static ProtocolPtr CreateProtocol(const LocalService& svc);
+
+    virtual void OnTimer(std::string msg); //定时器成功结束
 
     virtual void FeedReadData(std::string data); //把直接读取的数据传递给协议进行解析
     virtual void FeedWriteData(std::string data); //把需要发送出去的原始数据传递给协议进行封包
@@ -50,6 +57,9 @@ private:
     std::string DecryptData(std::string data);
 
 private:
+    typedef std::chrono::high_resolution_clock ClockType;
+
+private:
     const LocalService& m_Conf;
 
     int m_ReadN;
@@ -57,6 +67,7 @@ private:
     int m_Stage;
     uint32_t m_ReqHeadLen;
     uint64_t m_UUID_Ts;
+    bool m_GotBadRequest;
 
     unsigned char m_ReadIV[16];
     unsigned char m_WriteIV[16];
@@ -67,6 +78,8 @@ private:
     AES_KEY m_SessionKey;
 
     std::string m_Buf;
+
+    ClockType::time_point m_ConnReqTs;
 };
 
 };

@@ -51,8 +51,32 @@ ProtocolPtr DynecTunnelServer::CreateProtocol(const LocalService& svc)
     return std::make_shared<DynecTunnelServer>(svc);
 }
 
+void DynecTunnelServer::OnTimer(std::string msg)
+{
+    uint64_t average_rsp_size = Dynec_Utils::GetInstance().GetAverageHandshakeRspSize();
+
+    average_rsp_size = std::max<uint64_t>(average_rsp_size, 10) - 10;
+    average_rsp_size += CommUtils::Rand(1, 20);
+
+    DEBUG_LOG("Socket %llu ready to send %llu bytes of random data", m_ID, average_rsp_size);
+
+    std::string random_data;
+    random_data.reserve(average_rsp_size);
+
+    for (size_t i = 0; i < average_rsp_size; ++i)
+    {
+        unsigned char ch = CommUtils::Rand(0, 255);
+        random_data.push_back(*(char*)(&ch));
+    }
+
+    m_CBWrite(std::move(random_data));
+
+    throw ProtocolError(12000, std::move(msg));
+}
+
 void DynecTunnelServer::FeedReadData(std::string data)
 {
+    if (m_GotBadRequest) return;
     if (m_Stage < 3)
     {
         m_Buf += data;
@@ -69,7 +93,9 @@ void DynecTunnelServer::FeedReadData(std::string data)
             {
                 ERROR_LOG("Socket %llu get dyn_iv failed. bad request from client %s:%u", m_ID, m_RemoteHost.c_str(), (uint32_t)m_RemotePort);
                 GetServerImpInstance()->ReportRemoteHostBadRequest(m_RemoteHost);
-                throw ProtocolError(-12001, "get dyn_iv failed");
+                m_CBSetTimer(Dynec_Utils::GetInstance().GetAverageHandshakeCostMs(), "get dyn_iv failed");
+                m_GotBadRequest = true;
+                return;
             }
 
             m_Stage = 2;
@@ -98,7 +124,21 @@ void DynecTunnelServer::FeedReadData(std::string data)
                 ERROR_LOG("Socket %llu first request data corrupt. bad request from client %s:%u", m_ID, m_RemoteHost.c_str(), (uint32_t)m_RemotePort);
                 GetServerImpInstance()->ReportRemoteHostBadRequest(m_RemoteHost);
                 delete[] dec_buf;
-                throw ProtocolError(-12002, "client req hash failed");
+                m_CBSetTimer(Dynec_Utils::GetInstance().GetAverageHandshakeCostMs(), "client req hash failed");
+                m_GotBadRequest = true;
+                return;
+            }
+
+            //检查是否有足够的空间读取UUID
+            if (m_ReqHeadLen <= 8)
+            {
+                ERROR_LOG("Socket %llu req head len too small : %u . bad request from client %s:%u",
+                    m_ID, m_ReqHeadLen, m_RemoteHost.c_str(), (uint32_t)m_RemotePort);
+                GetServerImpInstance()->ReportRemoteHostBadRequest(m_RemoteHost);
+                delete[] dec_buf;
+                m_CBSetTimer(Dynec_Utils::GetInstance().GetAverageHandshakeCostMs(), "client req uuid repeat");
+                m_GotBadRequest = true;
+                return;
             }
 
             //读取并检查uuid，防止重放
@@ -112,11 +152,25 @@ void DynecTunnelServer::FeedReadData(std::string data)
                 ERROR_LOG("Socket %llu uuid %llx repeat. bad request from client %s:%u", m_ID, uuid, m_RemoteHost.c_str(), (uint32_t)m_RemotePort);
                 GetServerImpInstance()->ReportRemoteHostBadRequest(m_RemoteHost);
                 delete[] dec_buf;
-                throw ProtocolError(-12003, "client req uuid repeat");
+                m_CBSetTimer(Dynec_Utils::GetInstance().GetAverageHandshakeCostMs(), "client req uuid repeat");
+                m_GotBadRequest = true;
+                return;
             }
 
             //读取session key和conn_req
             unsigned char session_key_len = *head_data; ++head_data;
+
+            if (m_ReqHeadLen <= session_key_len + 12)
+            {
+                ERROR_LOG("Socket %llu req head len too small : %u . bad request from client %s:%u",
+                    m_ID, m_ReqHeadLen, m_RemoteHost.c_str(), (uint32_t)m_RemotePort);
+                GetServerImpInstance()->ReportRemoteHostBadRequest(m_RemoteHost);
+                delete[] dec_buf;
+                m_CBSetTimer(Dynec_Utils::GetInstance().GetAverageHandshakeCostMs(), "client req uuid repeat");
+                m_GotBadRequest = true;
+                return;
+            }
+
             std::string session_key((const char*)head_data, (size_t)session_key_len);
             head_data += session_key_len;
             unsigned char conn_type = *head_data; ++head_data;
@@ -135,6 +189,8 @@ void DynecTunnelServer::FeedReadData(std::string data)
             AES_set_encrypt_key(md_skey, 128, &m_SessionKey);
 
             delete[] dec_buf;
+
+            m_ConnReqTs = ClockType::now();
 
             m_CBConnReq(std::move(host), port, conn_type);
 
@@ -179,12 +235,6 @@ bool DynecTunnelServer::TryGetDynIV(uint64_t ts)
         m_ReqHeadLen = CommUtils::read32(dec_buf + 16) & 0xFFFF;
         memcpy(m_DynIV, iv, 16);
         DEBUG_LOG("Socket %llu successfully matched dyn_iv with ts=%llu req_head_len=%u", m_ID, ts, m_ReqHeadLen);
-        if (m_ReqHeadLen <= 12)
-        {
-            ERROR_LOG("Socket %llu req_head_len too small : %u", m_ID, m_ReqHeadLen);
-            GetServerImpInstance()->ReportRemoteHostBadRequest(m_RemoteHost);
-            throw ProtocolError(-12201, "req_head_len too small");
-        }
     }
     else
     {
@@ -228,6 +278,9 @@ void DynecTunnelServer::FeedConnRsp(int result, const std::string& host, uint16_
     size_t padding_len = CommUtils::Rand(32, 255);
     uint32_t head_data_len = 1 + padding_len + 4 + host.size();
     size_t packet_len = 20 + head_data_len + 32;
+
+    Dynec_Utils::GetInstance().ReportHandshakeCostMs(std::chrono::duration_cast<std::chrono::milliseconds>(ClockType::now() - m_ConnReqTs).count());
+    Dynec_Utils::GetInstance().ReportHandshakeRspSize(packet_len);
 
     unsigned char* raw_rsp = new unsigned char[packet_len];
 

@@ -31,6 +31,8 @@ class TunnelExit_UDP : public ProtocolBase
 public:
     TunnelExit_UDP(const std::string bind_host, uint16_t bind_port) : m_BindHost(bind_host), m_BindPort(bind_port) {}
 
+    virtual void OnTimer(std::string msg){} //定时器成功结束
+
     virtual void FeedReadData(std::string data){} //把直接读取的数据传递给协议进行解析
     virtual void FeedWriteData(std::string data); //把需要发送出去的原始数据传递给协议进行封包
 

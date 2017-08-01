@@ -25,6 +25,7 @@
 #include <cstring>
 #include <ctime>
 #include <algorithm>
+#include <queue>
 
 #include <openssl/aes.h>
 #include <openssl/hmac.h>
@@ -101,8 +102,28 @@ public:
         return false;
     }
 
+    void ReportHandshakeCostMs(uint64_t milli_secs)
+    {
+        m_HandshakeCostMs.AddRecord(milli_secs);
+    }
+
+    uint64_t GetAverageHandshakeCostMs()
+    {
+        return m_HandshakeCostMs.GetAverage();
+    }
+
+    void ReportHandshakeRspSize(uint64_t bytes)
+    {
+        m_HandshakeSize.AddRecord(bytes);
+    }
+
+    uint64_t GetAverageHandshakeRspSize()
+    {
+        return m_HandshakeSize.GetAverage();
+    }
+
 private:
-    Dynec_Utils() {}
+    Dynec_Utils() : m_HandshakeCostMs(20), m_HandshakeSize(250) {}
 
     std::map< std::string, std::map<uint64_t, iv_t> > m_DynIVec;
     std::map<std::string, AES_KEY> m_EncKeys;
@@ -111,6 +132,35 @@ private:
     std::set<uint64_t> m_UUID;
     std::map< uint64_t, std::set<uint64_t> > m_Time_2_UUID;
 
+    template<typename ValueType, size_t MAX_RECORD_SIZE>
+    struct Average
+    {
+        Average(ValueType def_value) : total(0), def(def_value) {}
+        std::queue<ValueType> items;
+        ValueType total;
+        ValueType def;
+
+        void AddRecord(ValueType item)
+        {
+            if (items.size() > MAX_RECORD_SIZE)
+            {
+                total -= items.front();
+                items.pop();
+            }
+            items.push(item);
+            total += item;
+        }
+
+        ValueType GetAverage()
+        {
+            return items.empty() ? def : total / items.size();
+        }
+    };
+
+    Average<uint64_t, 1024> m_HandshakeCostMs;
+    Average<uint64_t, 1024> m_HandshakeSize;
+
+private:
     template<typename GenKeyFunc>
     const AES_KEY* GetKeyWithCache(const std::string& psk, std::map<std::string, AES_KEY>& cache, GenKeyFunc func)
     {

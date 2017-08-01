@@ -37,6 +37,8 @@ typedef std::function<void(std::string&&, const std::string&, uint16_t)> PCB_OnU
 typedef std::function<int(std::string&&, uint16_t, int)> PCB_OnConnReqGot; //从协议流里解析出了一个连接请求
 typedef std::function<int(int, std::string&&, uint16_t)> PCB_OnConnRspGot; //从协议流里解析出了一个连接结果
 typedef std::function<uint16_t(const std::string&, uint16_t, ProtocolPtr)> PCB_CreateSubUdpSocket; //根据指定IP与协议创建UDP Socket并且返回端口号
+typedef std::function<void(uint64_t, std::string&&)> PCB_SetTimer; //设置定时器
+typedef std::function<void()> PCB_CancelTimer; //取消定时器
 
 enum CONN_TYPE
 {
@@ -74,6 +76,11 @@ public:
     void SetConnReqCallback(PCB_OnConnReqGot cb) {m_CBConnReq = cb;}
     void SetConnRspCallback(PCB_OnConnRspGot cb) {m_CBConnRsp = cb;}
 
+    void SetTimerCallback(PCB_SetTimer cb) {m_CBSetTimer = cb;}
+    void SetTimerCancleCallback(PCB_CancelTimer cb) {m_CBCancelTimer = cb;}
+
+    virtual void OnTimer(std::string msg) = 0; //定时器成功结束
+
     virtual void FeedReadData(std::string data) = 0; //把直接读取的数据传递给协议进行解析
     virtual void FeedWriteData(std::string data) = 0; //把需要发送出去的原始数据传递给协议进行封包
 
@@ -86,10 +93,16 @@ public:
 protected:
     PCB_OnData m_CBRead; //读取数据回调
     PCB_OnData m_CBWrite; //发送数据回调
+
     PCB_OnUdpData m_CBUdpWrite; //发送UDP数据回调
     PCB_CreateSubUdpSocket m_CBCreateUdp;
+
     PCB_OnConnReqGot m_CBConnReq;
     PCB_OnConnRspGot m_CBConnRsp;
+
+    PCB_SetTimer m_CBSetTimer;
+    PCB_CancelTimer m_CBCancelTimer;
+
     uint64_t m_ID;
     std::string m_LocalHost;
     uint16_t m_LocalPort;

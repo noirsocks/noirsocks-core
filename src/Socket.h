@@ -29,6 +29,7 @@
 #include <functional>
 #include <stdint.h>
 #include <boost/asio.hpp>
+#include <boost/date_time/posix_time/posix_time_types.hpp>
 #include "ProtocolBase.h"
 #include "Config.h"
 
@@ -73,6 +74,8 @@ protected:
     int OnConnReqGot(std::string&& host, uint16_t port, int conn_type);
     int OnConnRspGot(int result, std::string&& host, uint16_t port);
     uint16_t OnCreateUdp(const std::string& host, uint16_t base_port, ProtocolPtr protocol);
+    void OnSetTimer(uint64_t milli_secs, std::string&& msg);
+    void OnCancelTimer();
 
 protected:
     void DoAsyncRead();
@@ -110,6 +113,8 @@ protected:
     RouteFunc m_RouteFunc;
 
     std::shared_ptr<SocketUdp> m_SubUdpSocket;
+
+    std::shared_ptr<boost::asio::deadline_timer> m_Timer;
 
     enum {BUFFER_SIZE = 1<<14};
     char m_Buffer[BUFFER_SIZE];

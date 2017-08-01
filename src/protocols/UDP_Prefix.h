@@ -34,6 +34,8 @@ public:
         : m_LimitSrc(limit_src), m_LimitHost(limit_host), m_LimitPort(limit_port)
     {}
 
+    virtual void OnTimer(std::string msg){} //定时器成功结束
+
     virtual void FeedReadData(std::string data){} //把直接读取的数据传递给协议进行解析
     virtual void FeedWriteData(std::string data){} //把需要发送出去的原始数据传递给协议进行封包
 
