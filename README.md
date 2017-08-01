@@ -1,6 +1,6 @@
 # NoirSocks Core
 
-Core library of NoirSocks, based on boost::asio.
+Core library of NoirSocks, an extensible and cross-platform socks proxy framework based on boost::asio.
 It's a C++ library that can help you easily start a NoirSocks service.
 
 ## How to compile
