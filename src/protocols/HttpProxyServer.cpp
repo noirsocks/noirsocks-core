@@ -143,7 +143,7 @@ void HttpProxyServer::FeedConnRsp(int result, const std::string& host, uint16_t 
     }
     if (m_IsConnect)
     {
-        m_CBWrite("HTTP 200 Connection established\r\n\r\n");
+        m_CBWrite("HTTP/1.1 200 Connection established\r\n\r\n");
     }
 }
 
