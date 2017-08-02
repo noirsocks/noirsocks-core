@@ -74,8 +74,8 @@ void HttpHeaderParser::EraseHeaderField(HttpHeaderParser::EraseCondition cond)
     {
         if (cond(*it))
         {
-            it = m_HeaderKeys.erase(it);
             m_Header.erase(*it);
+            it = m_HeaderKeys.erase(it);
         }
         else
         {
