@@ -138,7 +138,7 @@ void HttpProxyServer::FeedConnRsp(int result, const std::string& host, uint16_t 
     if (result)
     {
         std::string msg = "<html><body><p>Proxy server failed to connect " + m_TargetHost + ":" + CommUtils::tostr(m_TargetPort) + "</p></body></html>";
-        m_CBWrite("HTTP 504 Connection failed\r\nContent-length: " + CommUtils::tostr(msg.size()) + "\r\n\r\n" + msg);
+        m_CBWrite("HTTP/1.1 504 Connection failed\r\nContent-length: " + CommUtils::tostr(msg.size()) + "\r\n\r\n" + msg);
         return;
     }
     if (m_IsConnect)
